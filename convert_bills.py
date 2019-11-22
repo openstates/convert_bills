@@ -132,7 +132,8 @@ def convert_state(directory, state):
         session_files = glob.glob(os.path.join(session_dir, "*/*"))
         if count:
             print(
-                f"already have {count} bills for {session} in database, {len(session_files)} in JSON data"
+                f"already have {count} bills for {session} in database, "
+                f"{len(session_files)} in JSON data"
             )
             if delete:
                 count = Bill.objects.filter(
@@ -209,7 +210,7 @@ def get_person(pid, name):
         try:
             return Person.objects.get(identifiers__identifier=pid)
         except Person.DoesNotExist:
-            # do more?
+            # TODO: do more?
             print("no such person", pid, name)
 
 
@@ -271,16 +272,17 @@ def import_bill(jid, old):
         created_at=created_at,
         extras=make_extras(old, VOTE_EXTRAS),
     )
+    # TODO: add billy id to v1 mapping
     # b.legacy_bill_mapping.create(legacy_id=billy_id)
 
     for title in alternate_titles:
         b.alternate_titles.create(title=title)
-    ext_title = old.pop('+extended_title', None)
+    ext_title = old.pop("+extended_title", None)
     if ext_title:
-        b.alternate_titles.create(title=ext_title, note='Extended Title')
-    official_title = old.pop('+official_title', None)
+        b.alternate_titles.create(title=ext_title, note="Extended Title")
+    official_title = old.pop("+official_title", None)
     if official_title:
-        b.alterate_titles.create(title=official_title, note='Official Title')
+        b.alterate_titles.create(title=official_title, note="Official Title")
 
     for source in sources:
         source.pop("retrieved", None)
@@ -316,35 +318,52 @@ def import_bill(jid, old):
     for vote in votes:
         convert_vote(vote, b, jid)
 
-    # for act in old.pop('actions'):
-    #     actor = act['actor']
-    #     if actor.lower() in ('governor', 'mayor', 'secretary of state'):
-    #         actor = 'executive'
-    #     elif actor.lower() == 'house' or (actor.lower().startswith('lower (') and self.state == 'ca'):
-    #         actor = 'lower'
-    #     elif actor.lower() in ('senate', 'upper`') or (actor.lower().startswith('upper (') and self.state == 'ca'):
-    #         actor = 'upper'
-    #     elif actor in ('joint', 'other', 'Data Systems', 'Speaker', 'clerk',
-    #                    'Office of the Legislative Fiscal Analyst', 'Became Law w',
-    #                    'conference') or (actor.lower().startswith('legislature (') and self.state == 'ca'):
-    #         actor = 'legislature'
+    for act_num, act in enumerate(actions):
+        actor = act["actor"]
+        if actor.lower() in ("governor", "mayor", "secretary of state"):
+            actor = "executive"
+        elif actor.lower() == "house" or (
+            actor.lower().startswith("lower (") and state == "ca"
+        ):
+            actor = "lower"
+        elif actor.lower() in ("senate", "upper`") or (
+            actor.lower().startswith("upper (") and state == "ca"
+        ):
+            actor = "upper"
+        elif actor in (
+            "joint",
+            "other",
+            "Data Systems",
+            "Speaker",
+            "clerk",
+            "Office of the Legislative Fiscal Analyst",
+            "Became Law w",
+            "conference",
+        ) or (actor.lower().startswith("legislature (") and state == "ca"):
+            actor = "legislature"
+        elif actor in ("committee", "sponsor") and state == "pr":
+            actor = "legislature"
+        elif actor in ("upper", "council") and state in ("ne", "dc"):
+            actor = "legislature"
 
-    #     if actor in ('committee', 'sponsor') and self.state == 'pr':
-    #         actor = 'legislature'
-
-    #     # nebraska & DC
-    #     if actor in ('upper','council') and self.state in ('ne', 'dc'):
-    #         actor = 'legislature'
-
-    #     if act['action']:
-    #         newact = new.add_action(act['action'], act['date'][:10], chamber=actor,
-    #                                 classification=[action_types[c] for c in act['type'] if c != 'other'])
-    #         for re in act.get('related_entities', []):
-    #             if re['type'] == 'committee':
-    #                 re['type'] = 'organization'
-    #             elif re['type'] == 'legislator':
-    #                 re['type'] = 'person'
-    #             newact.add_related_entity(re['name'], re['type'])
+        if act["action"]:
+            newact = b.actions.create(
+                description=act["action"],
+                date=act["date"][:10],
+                organization=get_chamber(jid, chamber),
+                classification=[action_types[c] for c in act["type"] if c != "other"],
+                order=act_num,
+            )
+            for re in act.get("related_entities", []):
+                if re["type"] == "committee":
+                    re["type"] = "organization"
+                elif re["type"] == "legislator":
+                    re["type"] = "person"
+                newact.related_entities.create(
+                    name=re["name"],
+                    entity_type=re["type"],
+                    person_id=get_person(spon.get("leg_id")),
+                )
 
 
 def convert_vote(vote, bill, jid):
@@ -412,21 +431,17 @@ def convert_vote(vote, bill, jid):
         bill=bill,
         extras=make_extras(vote, VOTE_EXTRAS),
     )
-    for vt in ('yes', 'no', 'other'):
-        v.counts.create(option=vt, value=vote.pop(vt + '_count'))
-        for name in vote.pop(vt + '_votes'):
+    for vt in ("yes", "no", "other"):
+        v.counts.create(option=vt, value=vote.pop(vt + "_count"))
+        for name in vote.pop(vt + "_votes"):
             v.votes.create(
                 option=vt,
-                voter_name=name['name'],
-                voter=get_person(name['leg_id'], name['name'])
+                voter_name=name["name"],
+                voter=get_person(name["leg_id"], name["name"]),
             )
 
-    #     # most states need identifiers for uniqueness, just do it everywhere
-    #     identifier = vote['date'] + '-' + str(vote_no)
-    #     vote_no += 1
-
-    for source in vote.pop('sources'):
-        source.pop('retrieved', None)
+    for source in vote.pop("sources"):
+        source.pop("retrieved", None)
         v.sources.create(**source)
 
     assert not vote, vote.keys()

@@ -8,6 +8,62 @@ from django.db import transaction
 import dj_database_url
 
 
+BILL_EXTRAS = [
+    "+status",
+    "+final_disposition",
+    "+volume_chapter",
+    "+ld_number",
+    "+referral",
+    "+companion",
+    "+description",
+    "+fiscal_note_probable:",
+    "+preintroduction_required:",
+    "+drafter",
+    "+category:",
+    "+chapter",
+    "+requester",
+    "+transmittal_date:",
+    "+by_request_of",
+    "+bill_draft_number:",
+    "+bill_lr",
+    "+bill_url",
+    "+rcs_num",
+    "+fiscal_note",
+    "+impact_clause",
+    "+fiscal_notes",
+    "+short_title",
+    "+type_",
+    "+conference_committee",
+    "conference_committee",
+    "+companion_bill_ids",
+    "+additional_information",
+]
+
+VOTE_EXTRAS = [
+    "+record",
+    "+method",
+    "method",
+    "+filename",
+    "record",
+    "+action",
+    "+location",
+    "+rcs_num",
+    "+type_",
+    "+threshold",
+    "+other_vote_detail",
+    "+voice_vote",
+]
+
+
+def make_extras(obj, field_names):
+    extras = {}
+    for k in field_names:
+        v = obj.pop(k, None)
+        if v:
+            extras[k.replace("+", "")] = v
+    return extras
+
+
 action_types = {
     "bill:filed": "filing",
     "bill:introduced": "introduction",
@@ -97,28 +153,28 @@ def convert_state(directory, state):
 
 def convert_classification(classification, state):
     # ca weirdness
-    if 'fiscal committee' in classification:
-        classification.remove('fiscal committee')
-    if 'urgency' in classification:
-        classification.remove('urgency')
-    if 'local program' in classification:
-        classification.remove('local program')
-    if 'tax levy' in classification:
-        classification.remove('tax levy')
+    if "fiscal committee" in classification:
+        classification.remove("fiscal committee")
+    if "urgency" in classification:
+        classification.remove("urgency")
+    if "local program" in classification:
+        classification.remove("local program")
+    if "tax levy" in classification:
+        classification.remove("tax levy")
 
     # if classification[0] in ['miscellaneous', 'jres', 'cres']:
     #     return
 
-    if classification == ['memorial resolution'] and state == 'ar':
-        classification = ['memorial']
-    if classification == ['concurrent memorial resolution'] and state == 'ar':
-        classification = ['concurrent memorial']
-    if classification == ['joint session resolution'] and state == 'il':
-        classification = ['joint resolution']
-    if classification == ['legislative resolution'] and state == 'ny':
-        classification = ['resolution']
-    if classification == ['address'] and state == 'nh':
-        classification = ['resolution']
+    if classification == ["memorial resolution"] and state == "ar":
+        classification = ["memorial"]
+    if classification == ["concurrent memorial resolution"] and state == "ar":
+        classification = ["concurrent memorial"]
+    if classification == ["joint session resolution"] and state == "il":
+        classification = ["joint resolution"]
+    if classification == ["legislative resolution"] and state == "ny":
+        classification = ["resolution"]
+    if classification == ["address"] and state == "nh":
+        classification = ["resolution"]
 
     return classification
 
@@ -126,12 +182,14 @@ def convert_classification(classification, state):
 @functools.lru_cache(20)
 def get_session(jid, session):
     from opencivicdata.legislative.models import LegislativeSession
+
     return LegislativeSession.objects.get(identifier=session, jurisdiction_id=jid)
 
 
 @functools.lru_cache(20)
 def get_chamber(jid, chamber):
     from opencivicdata.core.models import Organization
+
     # if state in ('ne', 'dc'):
     #     chamber = 'legislature'
     # elif chamber in ('joint', 'conference'):
@@ -142,6 +200,7 @@ def get_chamber(jid, chamber):
 @functools.lru_cache(500)
 def get_person(pid, name):
     from opencivicdata.core.models import Person
+
     if pid:
         try:
             return Person.objects.get(identifiers__identifier=pid)
@@ -155,18 +214,28 @@ def import_bill(jid, old):
 
     # not needed
     not_needed = [
-        "level", "country", "_current_term", "+bill_type", "+subject", "+scraped_subjects",
-        "subjects", "_type", "_term", "action_dates", "_current_session", "_all_ids",
+        "level",
+        "country",
+        "_current_term",
+        "+bill_type",
+        "+subject",
+        "+scraped_subjects",
+        "subjects",
+        "_type",
+        "_term",
+        "action_dates",
+        "_current_session",
+        "_all_ids",
     ]
     for f in not_needed:
         old.pop(f, None)
 
-    billy_id = old.pop('_id')
+    billy_id = old.pop("_id")
     bill_id = old.pop("bill_id")
     chamber = old.pop("chamber")
-    state = old.pop('state')
-    created_at = old.pop('created_at')
-    updated_at = old.pop('updated_at')
+    state = old.pop("state")
+    created_at = old.pop("created_at")
+    updated_at = old.pop("updated_at")
     session = old.pop("session")
     title = old.pop("title")
     classification = convert_classification(old.pop("type"), state)
@@ -193,41 +262,50 @@ def import_bill(jid, old):
         subject=scraped_subjects,
         updated_at=updated_at,
         created_at=created_at,
+        extras=make_extras(old, VOTE_EXTRAS),
     )
     # b.legacy_bill_mapping.create(legacy_id=billy_id)
 
     for title in alternate_titles:
         b.alternate_titles.create(title=title)
+    # ext_title = old.pop('+extended_title', None)
+    # if ext_title:
+    #     new.add_title(ext_title, note='Extended Title')
+    # official_title = old.pop('+official_title', None)
+    # if official_title:
+    #     new.add_title(official_title, note='Official Title')
+
     for source in sources:
-        source.pop('retrieved', None)
+        source.pop("retrieved", None)
         b.sources.create(**source)
     for doc in documents:
-        d, _ = b.documents.get_or_create(note=doc['name'])
+        d, _ = b.documents.get_or_create(note=doc["name"])
         d.links.create(url=doc["url"], media_type=doc.pop("mimetype"))
     for doc in versions:
-        d, _ = b.versions.get_or_create(note=doc['name'])
+        d, _ = b.versions.get_or_create(note=doc["name"])
         d.links.create(url=doc["url"], media_type=doc.pop("mimetype"))
     for spon in sponsors:
-        if spon.get('committee_id') is not None:
-            entity_type = 'organization'
-        elif spon.get('leg_id') is not None:
-            entity_type = 'person'
+        if spon.get("committee_id") is not None:
+            entity_type = "organization"
+        elif spon.get("leg_id") is not None:
+            entity_type = "person"
         else:
-            entity_type = ''
+            entity_type = ""
         b.sponsorships.create(
-            classification=spon['type'],
-            primary=(spon['type'] == 'primary'),
-            name=spon['name'],
+            classification=spon["type"],
+            primary=(spon["type"] == "primary"),
+            name=spon["name"],
             entity_type=entity_type,
-            person_id=get_person(spon.get('leg_id'), spon['name']),
+            person_id=get_person(spon.get("leg_id"), spon["name"]),
         )
     for comp in companions:
-        if state in ('nj', 'ny', 'mn'):
-            rtype = 'companion'
-        b.related_bills.create(identifier=comp['bill_id'],
-                               legislative_session=comp['session'],
-                               relation_type=rtype)
-
+        if state in ("nj", "ny", "mn"):
+            rtype = "companion"
+        b.related_bills.create(
+            identifier=comp["bill_id"],
+            legislative_session=comp["session"],
+            relation_type=rtype,
+        )
 
     # if not old['title'] and self.state == 'me':
     #     old['title'] = '(unknown)'
@@ -265,89 +343,68 @@ def import_bill(jid, old):
     # for abid in old.pop('alternate_bill_ids', []) + old.pop('+alternate_bill_ids', []):
     #     new.add_identifier(abid)
 
-    # ext_title = old.pop('+extended_title', None)
-    # if ext_title:
-    #     new.add_title(ext_title, note='Extended Title')
-    # official_title = old.pop('+official_title', None)
-    # if official_title:
-    #     new.add_title(official_title, note='Official Title')
 
-    # to_extras = ['+status', '+final_disposition', '+volume_chapter', '+ld_number', '+referral',
-    #              '+companion', '+description', '+fiscal_note_probable:',
-    #              '+preintroduction_required:', '+drafter', '+category:', '+chapter',
-    #              '+requester', '+transmittal_date:', '+by_request_of', '+bill_draft_number:',
-    #              '+bill_lr', '+bill_url', '+rcs_num', '+fiscal_note', '+impact_clause', '+fiscal_notes',
-    #              '+short_title', '+type_', '+conference_committee', 'conference_committee',
-    #              '+companion_bill_ids', '+additional_information']
-    # for k in to_extras:
-    #     v = old.pop(k, None)
-    #     if v:
-    #         new.extras[k.replace('+', '')] = v
+def convert_vote(vote):
+    from opencivicdata.legislative.models import VoteEvent
 
-    # # votes
-    # vote_no = 1
-    # for vote in old.pop('votes'):
-    #     vote.pop('id')
-    #     vote.pop('state')
-    #     vote.pop('bill_id')
-    #     vote.pop('bill_chamber', None)
-    #     vote.pop('+state', None)
-    #     vote.pop('+country', None)
-    #     vote.pop('+level', None)
-    #     vote.pop('+vacant', None)
-    #     vote.pop('+not_voting', None)
-    #     vote.pop('+amended', None)
-    #     vote.pop('+excused', None)
-    #     vote.pop('+NV', None)
-    #     vote.pop('+AB', None)
-    #     vote.pop('+P', None)
-    #     vote.pop('+V', None)
-    #     vote.pop('+E', None)
-    #     vote.pop('+EXC', None)
-    #     vote.pop('+EMER', None)
-    #     vote.pop('+present', None)
-    #     vote.pop('+absent', None)
-    #     vote.pop('+seconded', None)
-    #     vote.pop('+moved', None)
-    #     vote.pop('+vote_type', None)
-    #     vote.pop('+actual_vote', None)
-    #     vote.pop('+skip_votes', None)
-    #     vote.pop('vote_id')
-    #     vote.pop('+bill_chamber', None)
-    #     vote.pop('+session', None)
-    #     vote.pop('+bill_id', None)
-    #     vote.pop('+bill_session', None)
-    #     vote.pop('committee', None)
-    #     vote.pop('committee_id', None)
-    #     vtype = vote.pop('type', 'passage')
+    not_needed = [
+        "id",
+        "state",
+        "bill_id",
+        "bill_chamber",
+        "+state",
+        "+country",
+        "+level",
+        "+vacant",
+        "+not_voting",
+        "+amended",
+        "+excused",
+        "+NV",
+        "+AB",
+        "+P",
+        "+V",
+        "+E",
+        "+EXC",
+        "+EMER",
+        "+present",
+        "+absent",
+        "+seconded",
+        "+moved",
+        "+vote_type",
+        "+actual_vote",
+        "+skip_votes",
+        "vote_id",
+        "+bill_chamber",
+        "+session",
+        "+bill_id",
+        "+bill_session",
+        "committee",
+        "committee_id",
+    ]
+    for nn in not_needed:
+        vote.pop(nn, None)
 
-    #     if vtype == 'veto_override':
-    #         vtype = ['veto-override']
-    #     elif vtype == 'amendment':
-    #         vtype = ['amendment-passage']
-    #     elif vtype == 'other':
-    #         vtype = ''
-    #     else:
-    #         vtype = ['bill-passage']
+    vtype = vote.pop("type", "passage")
 
-    #     # most states need identifiers for uniqueness, just do it everywhere
-    #     identifier = vote['date'] + '-' + str(vote_no)
-    #     vote_no += 1
+    if vtype == "veto_override":
+        vtype = ["veto-override"]
+    elif vtype == "amendment":
+        vtype = ["amendment-passage"]
+    elif vtype == "other":
+        vtype = ""
+    else:
+        vtype = ["bill-passage"]
 
-    #     chamber = vote.pop('chamber')
-    #     if chamber == 'upper' and self.state in ('ne', 'dc'):
-    #         chamber = 'legislature'
-    #     elif chamber == 'joint':
-    #         chamber = 'legislature'
+    v = VoteEvent.objects.create(
+        motion_text=vote.pop("motion"),
+        result="pass" if vote.pop("passed") else "fail",
+        organization=get_chamber(vote.pop("chamber"), state),
+        start_date=vote.pop("date"),
+        classification=vtype,
+        bill=bill,
+        extras=make_extras(vote, VOTE_EXTRAS),
+    )
 
-    #     newvote = VoteEvent(legislative_session=vote.pop('session'),
-    #                    motion_text=vote.pop('motion'),
-    #                    result='pass' if vote.pop('passed') else 'fail',
-    #                    chamber=chamber,
-    #                    start_date=vote.pop('date'),
-    #                    classification=vtype,
-    #                    bill=new,
-    #                    identifier=identifier)
     #     for vt in ('yes', 'no', 'other'):
     #         newvote.set_count(vt, vote.pop(vt + '_count'))
     #         for name in vote.pop(vt + '_votes'):
@@ -360,18 +417,11 @@ def import_bill(jid, old):
     #     if not newvote.sources:
     #         newvote.sources = new.sources
 
-    #     to_extras = ['+record', '+method', 'method', '+filename', 'record', '+action',
-    #                  '+location', '+rcs_num', '+type_', '+threshold', '+other_vote_detail',
-    #                  '+voice_vote']
-    #     for k in to_extras:
-    #         v = vote.pop(k, None)
-    #         if v:
-    #             newvote.extras[k.replace('+', '')] = v
+    assert not vote, vote.keys()
 
-    #     assert not vote, vote.keys()
-    #     yield newvote
-
-    # yield new
+    #     # most states need identifiers for uniqueness, just do it everywhere
+    #     identifier = vote['date'] + '-' + str(vote_no)
+    #     vote_no += 1
 
 
 def main():

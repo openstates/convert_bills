@@ -194,7 +194,11 @@ def get_chamber(jid, chamber):
     #     chamber = 'legislature'
     # elif chamber in ('joint', 'conference'):
     #     chamber = 'legislature'
-    return Organization.objects.get(classification=chamber, jurisdiction_id=jid)
+    try:
+        return Organization.objects.get(classification=chamber, jurisdiction_id=jid)
+    except Organization.DoesNotExist:
+        print(jid, chamber)
+        raise
 
 
 @functools.lru_cache(500)
@@ -253,6 +257,9 @@ def import_bill(jid, old):
         print(old.keys())
         raise ValueError("left over keys")
 
+    # if not old['title'] and self.state == 'me':
+    #     old['title'] = '(unknown)'
+
     b = Bill.objects.create(
         identifier=bill_id,
         classification=classification,
@@ -268,12 +275,12 @@ def import_bill(jid, old):
 
     for title in alternate_titles:
         b.alternate_titles.create(title=title)
-    # ext_title = old.pop('+extended_title', None)
-    # if ext_title:
-    #     new.add_title(ext_title, note='Extended Title')
-    # official_title = old.pop('+official_title', None)
-    # if official_title:
-    #     new.add_title(official_title, note='Official Title')
+    ext_title = old.pop('+extended_title', None)
+    if ext_title:
+        b.alternate_titles.create(title=ext_title, note='Extended Title')
+    official_title = old.pop('+official_title', None)
+    if official_title:
+        b.alterate_titles.create(title=official_title, note='Official Title')
 
     for source in sources:
         source.pop("retrieved", None)
@@ -306,9 +313,8 @@ def import_bill(jid, old):
             legislative_session=comp["session"],
             relation_type=rtype,
         )
-
-    # if not old['title'] and self.state == 'me':
-    #     old['title'] = '(unknown)'
+    for vote in votes:
+        convert_vote(vote, b, jid)
 
     # for act in old.pop('actions'):
     #     actor = act['actor']
@@ -340,11 +346,8 @@ def import_bill(jid, old):
     #                 re['type'] = 'person'
     #             newact.add_related_entity(re['name'], re['type'])
 
-    # for abid in old.pop('alternate_bill_ids', []) + old.pop('+alternate_bill_ids', []):
-    #     new.add_identifier(abid)
 
-
-def convert_vote(vote):
+def convert_vote(vote, bill, jid):
     from opencivicdata.legislative.models import VoteEvent
 
     not_needed = [
@@ -352,6 +355,10 @@ def convert_vote(vote):
         "state",
         "bill_id",
         "bill_chamber",
+        "session",
+        "_type",
+        "_voters",
+        "_id",
         "+state",
         "+country",
         "+level",
@@ -391,37 +398,38 @@ def convert_vote(vote):
     elif vtype == "amendment":
         vtype = ["amendment-passage"]
     elif vtype == "other":
-        vtype = ""
+        vtype = []
     else:
         vtype = ["bill-passage"]
 
     v = VoteEvent.objects.create(
         motion_text=vote.pop("motion"),
+        legislative_session=bill.legislative_session,
         result="pass" if vote.pop("passed") else "fail",
-        organization=get_chamber(vote.pop("chamber"), state),
+        organization=get_chamber(jid, vote.pop("chamber")),
         start_date=vote.pop("date"),
-        classification=vtype,
+        motion_classification=vtype,
         bill=bill,
         extras=make_extras(vote, VOTE_EXTRAS),
     )
-
-    #     for vt in ('yes', 'no', 'other'):
-    #         newvote.set_count(vt, vote.pop(vt + '_count'))
-    #         for name in vote.pop(vt + '_votes'):
-    #             newvote.vote(vt, name['name'])
-
-    #     for source in vote.pop('sources'):
-    #         source.pop('retrieved', None)
-    #         newvote.add_source(**source)
-
-    #     if not newvote.sources:
-    #         newvote.sources = new.sources
-
-    assert not vote, vote.keys()
+    for vt in ('yes', 'no', 'other'):
+        v.counts.create(option=vt, value=vote.pop(vt + '_count'))
+        for name in vote.pop(vt + '_votes'):
+            v.votes.create(
+                option=vt,
+                voter_name=name['name'],
+                voter=get_person(name['leg_id'], name['name'])
+            )
 
     #     # most states need identifiers for uniqueness, just do it everywhere
     #     identifier = vote['date'] + '-' + str(vote_no)
     #     vote_no += 1
+
+    for source in vote.pop('sources'):
+        source.pop('retrieved', None)
+        v.sources.create(**source)
+
+    assert not vote, vote.keys()
 
 
 def main():

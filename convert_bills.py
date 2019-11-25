@@ -120,7 +120,7 @@ def convert_state(directory, state):
 
     jid = abbr_to_jid(state)
     sessions = glob.glob(os.path.join(directory, state, "bills", state, "*"))
-    delete = True
+    delete = False
 
     for session_dir in sorted(sessions):
         # check if session is OK to import
@@ -230,6 +230,7 @@ def import_bill(jid, old):
         "action_dates",
         "_current_session",
         "_all_ids",
+        "alternate_bill_ids",
     ]
     for f in not_needed:
         old.pop(f, None)

@@ -31,6 +31,8 @@ def update_url(obj):
     new = convert_url(obj.url)
     if new:
         print(f"{obj.url} => {new}")
+        obj.url = new
+        obj.save()
     else:
         raise Exception(obj.url)
 

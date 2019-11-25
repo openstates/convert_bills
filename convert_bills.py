@@ -149,7 +149,6 @@ def convert_state(directory, state):
                 with open(file) as f:
                     old = json.load(f)
                     import_bill(jid, old)
-            raise Exception()
 
 
 def convert_classification(classification, state):
@@ -208,7 +207,7 @@ def get_person(pid, name):
 
     if pid:
         try:
-            return Person.objects.get(identifiers__identifier=pid)
+            return Person.objects.get(identifiers__identifier=pid).id
         except Person.DoesNotExist:
             # TODO: do more?
             print("no such person", pid, name)
@@ -361,7 +360,7 @@ def import_bill(jid, old):
                 newact.related_entities.create(
                     name=re["name"],
                     entity_type=re["type"],
-                    person_id=get_person(spon.get("leg_id")),
+                    person_id=get_person(spon.get("leg_id"), re["name"]),
                 )
 
 
@@ -436,7 +435,7 @@ def convert_vote(vote, bill, jid):
             v.votes.create(
                 option=vt,
                 voter_name=name["name"],
-                voter=get_person(name["leg_id"], name["name"]),
+                voter_id=get_person(name["leg_id"], name["name"]),
             )
 
     for source in vote.pop("sources"):

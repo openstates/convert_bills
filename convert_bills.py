@@ -110,7 +110,7 @@ def init_django():
     DATABASES = {"default": dj_database_url.parse(DATABASE_URL)}
     settings.configure(
         DATABASES=DATABASES,
-        INSTALLED_APPS=("opencivicdata.core", "opencivicdata.legislative"),
+        INSTALLED_APPS=("opencivicdata.core", "opencivicdata.legislative", "v1"),
     )
     django.setup()
 
@@ -272,8 +272,7 @@ def import_bill(jid, old):
         created_at=created_at,
         extras=make_extras(old, VOTE_EXTRAS),
     )
-    # TODO: add billy id to v1 mapping
-    # b.legacy_bill_mapping.create(legacy_id=billy_id)
+    b.legacy_mapping.create(legacy_id=billy_id)
 
     for title in alternate_titles:
         b.alternate_titles.create(title=title)

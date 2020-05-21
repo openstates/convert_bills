@@ -8,6 +8,7 @@ authors = ["James Turk <dev@jamesturk.net>"]
 python = "^3.7"
 opencivicdata = "^2.4"
 dj-database-url = "^0.5.0"
+requests = "^2.23.0"
 
 [tool.poetry.dev-dependencies]
 

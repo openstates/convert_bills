@@ -56,11 +56,7 @@ def search_term(term, filename):
 
 def main():
     init_django()
-    # query = "epidemic OR pandemic OR flu OR cold OR health OR influenza OR swine flu OR covid OR coronavirus"
-    # # query = "flood reduce OR flood risk"
-    # # search_term("flood reduce", "reduce")
-    # # search_term("flood risk", "risk")
-    for word in ["epidemic", "pandemic", "flu", "cold", "influenza", "swine flu", "covid", "coronavirus"]:
+    for word in ["immigrant", "immigration"]:
         search_term(word, word)
 
 

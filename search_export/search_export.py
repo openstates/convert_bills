@@ -1,4 +1,5 @@
 import json
+import csv
 from django.contrib.postgres.search import SearchQuery
 from utils import init_django
 
@@ -33,6 +34,8 @@ def search_term(term, filename):
                                  "searchable")
     print(term, len(bills))
     with open("output/" + filename + ".csv", "w") as f:
+        index = csv.DictWriter(f, ["uuid", "state", "session", "identifier", "title"])
+        index.writeheader()
         for b in bills:
             try:
                 link_url = b.searchable.version_link.url
@@ -44,20 +47,22 @@ def search_term(term, filename):
                 "identifier": b.identifier,
                 "uuid": b.id,
                 "title": b.title,
+            }
+            index.writerow(bill)
+            bill.update({
                 "sponsors": [s.name for s in b.sponsorships.all()],
                 "actions": [{"date": a.date, "description": a.description} for a in b.actions.all()],
                 "votes": [vote_to_dict(v) for v in b.votes.all()],
                 "text_url": link_url,
                 "text": b.searchable.raw_text,
-            }
-            with open(f"output/{b.id.replace('ocd-bill/', '')}.json", "w") as f:
-                json.dump(bill, f)
+            })
+            with open(f"output/{b.id.replace('ocd-bill/', '')}.json", "w") as bf:
+                json.dump(bill, bf)
 
 
 def main():
     init_django()
-    for word in ["immigrant", "immigration"]:
-        search_term(word, word)
+    search_term("immigrant OR immigration", "immigration")
 
 
 if __name__ == "__main__":
